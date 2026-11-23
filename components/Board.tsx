@@ -223,7 +223,7 @@ function Item({
       className={`item size-${gift.size}${taken ? " taken" : ""}`}
       style={{ ["--tilt" as string]: `${gift.tilt}deg` }}
       onClick={onOpen}
-      aria-label={`${gift.name}, ${status.toLowerCase()}`}
+      aria-label={`${gift.name}, ${taken ? `réservé par ${reservedBy}` : "disponible"}`}
       initial={reduce ? false : { opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: reduce ? 0 : 0.05 * index, type: "spring", stiffness: 260, damping: 24 }}
@@ -279,11 +279,16 @@ function Sheet({
   const drag = useDragControls();
   const canCancel = !!token || !!admin;
 
+  // onClose change à chaque rafraîchissement de la liste : on le garde dans une ref
+  // pour que ces effets ne tournent qu'à l'ouverture (sinon le prénom tapé s'efface).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     try {
       setName(localStorage.getItem(NAME_KEY) ?? "");
     } catch {}
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -291,7 +296,7 @@ function Sheet({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -314,7 +319,7 @@ function Sheet({
         write(NAME_KEY, clean);
         setJustReserved(true);
         onReserved(data.name ?? clean, data.token);
-        setTimeout(onClose, 1700);
+        setTimeout(() => onCloseRef.current(), 1700);
       } else if (r.status === 409) {
         setError(data.by ? `Trop tard, ${data.by} vient de le réserver.` : "Quelqu'un vient de le réserver.");
         onConflict(data.by ?? null);

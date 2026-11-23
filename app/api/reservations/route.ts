@@ -9,7 +9,7 @@ const noStore = { "Cache-Control": "no-store" };
 
 function cleanName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
-  const name = raw.replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 30);
+  const name = raw.replace(/<[^>]*>/g, "").replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 30);
   return name.length ? name : null;
 }
 
