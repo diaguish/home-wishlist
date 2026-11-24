@@ -20,7 +20,7 @@ export type Gift = {
 
 // L'ordre compose le moodboard : alterner grands / petits objets.
 export const GIFTS: Gift[] = [
-  { id: "fauteuil", name: "Fauteuil", details: "Fauteuil design vert olive, comme sur la photo", room: "Salon", image: "/items/fauteuil.webp", size: "l", tilt: -2 },
+  { id: "fauteuil", name: "Fauteuil", details: "Fauteuil design minimaliste COLAMY, vert olive", room: "Salon", image: "/items/fauteuil.webp", size: "l", tilt: -2, link: { url: "https://www.tiktok.com/search?q=COLAMY%20fauteuil%20design%20minimaliste", shop: "TikTok Shop (COLAMY France)", price: "≈ 110 €" } },
   { id: "fourth-wing", name: "Fourth Wing, tome 1", details: "Version française, édition collector", room: "Lecture", art: "book-fourthwing", size: "s", tilt: 6 },
   { id: "miroir", name: "Grand miroir", details: "Dimensions et style au choix", room: "Chambre", image: "/items/miroir.webp", size: "l", tilt: 0 },
   { id: "projecteur", name: "Projecteur portable", details: "Niklok, le modèle de la photo", room: "Salon", art: "projector", size: "s", tilt: -5, link: { url: "https://www.tiktok.com/search?q=Niklok%20projecteur%20portable%20freestyle", shop: "TikTok Shop", price: "≈ 35 €" } },
