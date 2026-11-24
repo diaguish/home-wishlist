@@ -1,13 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion, useDragControls, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EVENT, GIFTS, SLOT_IDS, alternativesOf, storageId, type Gift } from "@/lib/gifts";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ENTRIES, EVENT, type Entry, type Gift } from "@/lib/gifts";
 import { Art } from "./Art";
 
 type Reservations = Record<string, { name: string }>;
-type Covered = Record<string, { by: string; takenId: string }>;
-const nameOf = (id: string) => GIFTS.find((g) => g.id === id)?.name ?? "l'autre option";
 
 const TOKENS_KEY = "wishlist:tokens";
 const NAME_KEY = "wishlist:prenom";
@@ -27,14 +25,16 @@ function write(k: string, v: string) {
   } catch {}
 }
 
+/** Le cadeau réservé dans une entrée (un seul possible, même pour un groupe au choix). */
+const takenIn = (e: Entry, res: Reservations) => e.options.find((o) => res[o.id]);
+
 export default function Board() {
   const [res, setRes] = useState<Reservations>({});
-  const [covered, setCovered] = useState<Covered>({});
   const [loaded, setLoaded] = useState(false);
   const [storage, setStorage] = useState<string>("redis");
   const [tokens, setTokens] = useState<Record<string, string>>({});
   const [admin, setAdmin] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const [onlyFree, setOnlyFree] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const reduce = useReducedMotion();
@@ -45,7 +45,6 @@ export default function Board() {
       if (!r.ok) return;
       const data = await r.json();
       setRes(data.reservations ?? {});
-      setCovered(data.covered ?? {});
       setStorage(data.storage ?? "redis");
       setLoaded(true);
     } catch {}
@@ -82,13 +81,9 @@ export default function Board() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const filledSlots = new Set(GIFTS.filter((g) => res[g.id]).map(storageId));
-  const taken = filledSlots.size;
-  const list = useMemo(
-    () => GIFTS.filter((g) => !(onlyFree && (res[g.id] || covered[g.id]))),
-    [onlyFree, res, covered]
-  );
-  const open = GIFTS.find((g) => g.id === openId) ?? null;
+  const taken = ENTRIES.filter((e) => takenIn(e, res)).length;
+  const list = useMemo(() => ENTRIES.filter((e) => !(onlyFree && takenIn(e, res))), [onlyFree, res]);
+  const open = ENTRIES.find((e) => e.key === openKey) ?? null;
 
   const saveToken = (id: string, token: string | null) => {
     setTokens((prev) => {
@@ -115,15 +110,15 @@ export default function Board() {
           <span className="count" aria-live="polite">
             {loaded ? (
               <>
-                <b>{taken}</b> sur {SLOT_IDS.length} déjà offerts
+                <b>{taken}</b> sur {ENTRIES.length} déjà offerts
               </>
             ) : (
               "Chargement de la liste…"
             )}
           </span>
           <span className="dots" aria-hidden="true">
-            {SLOT_IDS.map((id) => (
-              <i key={id} className={filledSlots.has(id) ? "on" : ""} />
+            {ENTRIES.map((e) => (
+              <i key={e.key} className={takenIn(e, res) ? "on" : ""} />
             ))}
           </span>
           <button className="switch" aria-pressed={onlyFree} onClick={() => setOnlyFree((v) => !v)}>
@@ -136,16 +131,19 @@ export default function Board() {
       </header>
 
       <main className="board">
-        {list.map((g, i) => (
+        {list.map((e, i) => (
           <Item
-            key={g.id}
-            gift={g}
+            key={e.key}
+            entry={e}
             index={i}
-            reservedBy={res[g.id]?.name}
-            coveredBy={covered[g.id]}
-            mine={!!tokens[g.id]}
-            hidden={openId === g.id}
-            onOpen={() => setOpenId(g.id)}
+            takenGift={takenIn(e, res)}
+            reservedBy={(() => {
+              const t = takenIn(e, res);
+              return t ? res[t.id].name : undefined;
+            })()}
+            mine={e.options.some((o) => tokens[o.id] && res[o.id])}
+            hidden={openKey === e.key}
+            onOpen={() => setOpenKey(e.key)}
             reduce={!!reduce}
           />
         ))}
@@ -157,36 +155,25 @@ export default function Board() {
       <AnimatePresence>
         {open && (
           <Sheet
-            key={open.id}
-            gift={open}
-            reservedBy={res[open.id]?.name}
-            coveredBy={covered[open.id]}
-            token={tokens[open.id]}
+            key={open.key}
+            entry={open}
+            res={res}
+            tokens={tokens}
             admin={admin}
-            onClose={() => setOpenId(null)}
-            onReserved={(name, token) => {
-              setRes((r) => ({ ...r, [open.id]: { name } }));
-              setCovered((c) => {
-                const n = { ...c };
-                for (const o of alternativesOf(open)) n[o.id] = { by: name, takenId: open.id };
-                return n;
-              });
-              saveToken(open.id, token);
-              setToast(`Merci ${name} ! « ${open.name} » est pour toi.`);
+            onClose={() => setOpenKey(null)}
+            onReserved={(gift, name, token) => {
+              setRes((r) => ({ ...r, [gift.id]: { name } }));
+              saveToken(gift.id, token);
+              setToast(`Merci ${name} ! « ${gift.name} » est pour toi.`);
             }}
             onConflict={() => refresh()}
-            onReleased={() => {
+            onReleased={(gift) => {
               setRes((r) => {
                 const n = { ...r };
-                delete n[open.id];
+                delete n[gift.id];
                 return n;
               });
-              setCovered((c) => {
-                const n = { ...c };
-                for (const o of alternativesOf(open)) delete n[o.id];
-                return n;
-              });
-              saveToken(open.id, null);
+              saveToken(gift.id, null);
               setToast("Réservation annulée.");
             }}
           />
@@ -217,87 +204,109 @@ function Visual({ gift }: { gift: Gift }) {
 }
 
 function Item({
-  gift,
+  entry,
   index,
+  takenGift,
   reservedBy,
-  coveredBy,
   mine,
   hidden,
   onOpen,
   reduce,
 }: {
-  gift: Gift;
+  entry: Entry;
   index: number;
+  takenGift?: Gift;
   reservedBy?: string;
-  coveredBy?: { by: string; takenId: string };
   mine: boolean;
   hidden: boolean;
   onOpen: () => void;
   reduce: boolean;
 }) {
-  const taken = !!reservedBy;
-  const alt = alternativesOf(gift);
+  const taken = !!takenGift;
+  const pair = entry.options.length > 1;
+  const first = entry.options[0];
+  const label = pair
+    ? `${entry.options.map((o) => o.name).join(" ou ")}, au choix, ${
+        taken ? `${reservedBy} offre ${takenGift!.name}` : "disponible"
+      }`
+    : `${first.name}, ${taken ? `réservé par ${reservedBy}` : "disponible"}`;
+
   return (
     <motion.button
-      className={`item size-${gift.size}${taken || coveredBy ? " taken" : ""}`}
-      style={{ ["--tilt" as string]: `${gift.tilt}deg` }}
+      className={`item ${pair ? "pair" : `size-${first.size}`}${taken ? " taken" : ""}`}
+      style={{ ["--tilt" as string]: `${first.tilt}deg` }}
       onClick={onOpen}
-      aria-label={`${gift.name}, ${
-        taken ? `réservé par ${reservedBy}` : coveredBy ? `plus besoin, ${coveredBy.by} offre ${nameOf(coveredBy.takenId)}` : "disponible"
-      }`}
+      aria-label={label}
       initial={reduce ? false : { opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: reduce ? 0 : 0.05 * index, type: "spring", stiffness: 260, damping: 24 }}
-      whileTap={reduce ? undefined : { scale: 0.92, rotate: 0 }}
+      whileTap={reduce ? undefined : { scale: 0.94 }}
     >
       <span className="item-stage">
-        {!hidden ? (
-          <motion.span className="item-visual" layoutId={`v-${gift.id}`}>
-            <Visual gift={gift} />
-          </motion.span>
-        ) : (
-          <span className="item-visual" />
-        )}
+        {entry.options.map((g, i) => (
+          <Fragment key={g.id}>
+            {i > 0 && (
+              <span className="or-mark" aria-hidden="true">
+                ou
+              </span>
+            )}
+            {!hidden ? (
+              <motion.span
+                className={`item-visual${pair ? ` side-${i === 0 ? "l" : "r"}` : ""}${
+                  taken && takenGift!.id !== g.id ? " unpicked" : ""
+                }`}
+                layoutId={`v-${g.id}`}
+              >
+                <Visual gift={g} />
+              </motion.span>
+            ) : (
+              <span className={`item-visual${pair ? ` side-${i === 0 ? "l" : "r"}` : ""}`} />
+            )}
+          </Fragment>
+        ))}
         {taken && (
-          <span className="sticker">
+          <span className={`sticker${pair ? ` on-${takenGift!.id === first.id ? "l" : "r"}` : ""}`}>
             {mine ? "C'est toi" : reservedBy}
           </span>
         )}
       </span>
       <span className="item-label">
-        <span className="item-name">{gift.name}</span>
-        {alt.length > 0 && !taken && !coveredBy && (
-          <span className="item-or">ou {alt.map((o) => o.name).join(", ")}</span>
-        )}
-        <span className={`item-status${taken || coveredBy ? " is-taken" : ""}`}>
-          {taken ? "Réservé" : coveredBy ? "Plus besoin" : "Disponible"}
-        </span>
+        <span className="item-name">{pair && taken ? takenGift!.name : entry.title}</span>
+        {pair && !taken && <span className="item-or">{entry.options.map((o) => o.name).join(" ou ")}</span>}
+        <span className={`item-status${taken ? " is-taken" : ""}`}>{taken ? "Réservé" : "Disponible"}</span>
       </span>
     </motion.button>
   );
 }
 
 function Sheet({
-  gift,
-  reservedBy,
-  coveredBy,
-  token,
+  entry,
+  res,
+  tokens,
   admin,
   onClose,
   onReserved,
   onConflict,
   onReleased,
 }: {
-  gift: Gift;
-  reservedBy?: string;
-  coveredBy?: { by: string; takenId: string };
-  token?: string;
+  entry: Entry;
+  res: Reservations;
+  tokens: Record<string, string>;
   admin: string | null;
   onClose: () => void;
-  onReserved: (name: string, token: string) => void;
+  onReserved: (gift: Gift, name: string, token: string) => void;
   onConflict: () => void;
-  onReleased: () => void;
+  onReleased: (gift: Gift) => void;
 }) {
+  const pair = entry.options.length > 1;
+  const takenGift = takenIn(entry, res);
+  const taken = !!takenGift;
+  const [pickedId, setPickedId] = useState<string>(takenGift?.id ?? entry.options[0].id);
+  const picked = takenGift ?? entry.options.find((o) => o.id === pickedId) ?? entry.options[0];
+  const reservedBy = takenGift ? res[takenGift.id].name : undefined;
+  const token = takenGift ? tokens[takenGift.id] : undefined;
+  const canCancel = !!token || !!admin;
+
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -305,7 +314,6 @@ function Sheet({
   const [justReserved, setJustReserved] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const drag = useDragControls();
-  const canCancel = !!token || !!admin;
 
   // onClose change à chaque rafraîchissement de la liste : on le garde dans une ref
   // pour que ces effets ne tournent qu'à l'ouverture (sinon le prénom tapé s'efface).
@@ -334,6 +342,7 @@ function Sheet({
       inputRef.current?.focus();
       return;
     }
+    const gift = picked;
     setBusy(true);
     setError(null);
     try {
@@ -346,13 +355,14 @@ function Sheet({
       if (r.ok) {
         write(NAME_KEY, clean);
         setJustReserved(true);
-        onReserved(data.name ?? clean, data.token);
+        onReserved(gift, data.name ?? clean, data.token);
         setTimeout(() => onCloseRef.current(), 1700);
       } else if (r.status === 409) {
         const who = data.by ?? "Quelqu'un";
+        const other = entry.options.find((o) => o.id === data.takenId);
         setError(
-          data.takenId && data.takenId !== gift.id
-            ? `Trop tard, ${who} vient de prendre « ${nameOf(data.takenId)} ». Une seule des deux suffit.`
+          other && other.id !== gift.id
+            ? `Trop tard, ${who} vient de prendre « ${other.name} ». Une seule des deux suffit.`
             : `Trop tard, ${who} vient de le réserver.`
         );
         onConflict();
@@ -367,17 +377,18 @@ function Sheet({
   }
 
   async function cancel() {
+    if (!takenGift) return;
     setBusy(true);
     setError(null);
     try {
       const r = await fetch("/api/reservations", {
         method: "DELETE",
         headers: { "Content-Type": "application/json", ...(admin ? { "x-admin-key": admin } : {}) },
-        body: JSON.stringify({ giftId: gift.id, token }),
+        body: JSON.stringify({ giftId: takenGift.id, token }),
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
-        onReleased();
+        onReleased(takenGift);
         setConfirmCancel(false);
       } else setError(data.error ?? "L'annulation n'est pas passée.");
     } catch {
@@ -387,12 +398,10 @@ function Sheet({
     }
   }
 
-  const taken = !!reservedBy;
-
   return (
     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
       <motion.div
-        className="sheet"
+        className={`sheet${pair ? " is-pair" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="sheet-title"
@@ -415,51 +424,106 @@ function Sheet({
           </svg>
         </button>
 
-        <div className={`sheet-stage${taken || coveredBy ? " taken" : ""}`} onPointerDown={(e) => drag.start(e)}>
-          <motion.div className="sheet-visual" layoutId={`v-${gift.id}`}>
-            <Visual gift={gift} />
-          </motion.div>
-          <AnimatePresence>
-            {taken && (
-              <motion.div
-                className="stamp"
-                initial={{ scale: 2.2, opacity: 0, rotate: -24 }}
-                animate={{ scale: 1, opacity: 1, rotate: -10 }}
-                transition={{ type: "spring", stiffness: 420, damping: 18, delay: justReserved ? 0.05 : 0 }}
-              >
-                <span>Offert par</span>
-                <b>{reservedBy}</b>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {pair ? (
+          <div className="sheet-stage pair-stage" role="radiogroup" aria-label="Choisis ta desserte">
+            {entry.options.map((g, i) => {
+              const isPicked = picked.id === g.id;
+              return (
+                <Fragment key={g.id}>
+                  {i > 0 && (
+                    <span className="or-mark big" aria-hidden="true">
+                      ou
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={isPicked}
+                    aria-label={g.name}
+                    disabled={taken}
+                    className={`pick${isPicked ? " picked" : ""}${taken && !isPicked ? " gone" : ""}`}
+                    onClick={() => {
+                      setPickedId(g.id);
+                      setError(null);
+                    }}
+                  >
+                    <motion.span
+                      className={`pick-visual side-${i === 0 ? "l" : "r"}`}
+                      layoutId={`v-${g.id}`}
+                    >
+                      <Visual gift={g} />
+                    </motion.span>
+                    <span className="pick-name">{g.name}</span>
+                    {!taken && (
+                      <span className="pick-check" aria-hidden="true">
+                        <svg viewBox="0 0 24 24">
+                          <path d="M5 12.5l4.5 4.5L19 7.5" />
+                        </svg>
+                      </span>
+                    )}
+                  </button>
+                </Fragment>
+              );
+            })}
+            <AnimatePresence>
+              {taken && (
+                <motion.div
+                  className={`stamp on-${takenGift!.id === entry.options[0].id ? "l" : "r"}`}
+                  initial={{ scale: 2.2, opacity: 0, rotate: -24 }}
+                  animate={{ scale: 1, opacity: 1, rotate: -10 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 18 }}
+                >
+                  <span>Offert par</span>
+                  <b>{reservedBy}</b>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ) : (
+          <div className={`sheet-stage${taken ? " taken" : ""}`} onPointerDown={(e) => drag.start(e)}>
+            <motion.div className="sheet-visual" layoutId={`v-${picked.id}`}>
+              <Visual gift={picked} />
+            </motion.div>
+            <AnimatePresence>
+              {taken && (
+                <motion.div
+                  className="stamp"
+                  initial={{ scale: 2.2, opacity: 0, rotate: -24 }}
+                  animate={{ scale: 1, opacity: 1, rotate: -10 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 18 }}
+                >
+                  <span>Offert par</span>
+                  <b>{reservedBy}</b>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         <div className="sheet-body">
-          <span className="eyebrow">{gift.room}</span>
+          <span className="eyebrow">{pair ? (taken ? "Au choix · réservé" : "Au choix, une seule des deux") : entry.room}</span>
           <h2 id="sheet-title" className="sheet-title">
-            {gift.name}
+            {picked.name}
           </h2>
-          <p className="sheet-details">{gift.details}</p>
-          {alternativesOf(gift).length > 0 && !taken && !coveredBy && (
+          <p className="sheet-details">{picked.details}</p>
+          {pair && !taken && (
             <p className="or-note">
-              Au choix avec « {alternativesOf(gift).map((o) => o.name).join(" », « ")} » : une seule des deux suffit,
-              prends celle que tu préfères.
+              Elle n&apos;en veut qu&apos;une : touche celle que tu préfères, puis valide.
             </p>
           )}
 
           {justReserved ? (
-            <p className="thanks">Merci {reservedBy} ! C&apos;est noté, il est pour toi.</p>
-          ) : coveredBy ? (
-            <div className="taken-box">
-              <p>
-                Une seule des deux suffit, et {coveredBy.by} offre déjà « {nameOf(coveredBy.takenId)} ». Choisis un autre
-                objet !
-              </p>
-            </div>
+            <p className="thanks">Merci {reservedBy} ! C&apos;est noté, elle est pour toi.</p>
           ) : taken ? (
             <div className="taken-box">
               <p>
-                {token ? "Tu as réservé ce cadeau." : `${reservedBy} s'en occupe. Choisis un autre objet !`}
+                {token
+                  ? pair
+                    ? `Tu offres « ${takenGift!.name} ». L'autre n'est plus nécessaire.`
+                    : "Tu as réservé ce cadeau."
+                  : pair
+                    ? `${reservedBy} offre « ${takenGift!.name} », donc l'autre n'est plus nécessaire. Choisis un autre objet !`
+                    : `${reservedBy} s'en occupe. Choisis un autre objet !`}
               </p>
               {canCancel &&
                 (confirmCancel ? (
@@ -492,7 +556,7 @@ function Sheet({
                   enterKeyHint="done"
                 />
                 <motion.button className="btn" type="submit" disabled={busy} whileTap={{ scale: 0.95 }}>
-                  {busy ? "Un instant…" : "Je l'offre"}
+                  {busy ? "Un instant…" : pair ? "J'offre celle-ci" : "Je l'offre"}
                 </motion.button>
               </div>
               <p className="hint">Ton prénom sera visible par les autres invités, pour éviter les doublons.</p>

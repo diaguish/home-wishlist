@@ -45,6 +45,27 @@ export const storageId = (g: Gift) => (g.group ? `group-${g.group}` : g.id);
 /** Les autres cadeaux au choix avec celui-ci. */
 export const alternativesOf = (g: Gift) => (g.group ? GIFTS.filter((o) => o.group === g.group && o.id !== g.id) : []);
 
+/** Nom affiché pour un groupe « au choix ». */
+export const GROUPS: Record<string, { title: string; room: string }> = {
+  desserte: { title: "Une desserte, au choix", room: "Cuisine ou rangement" },
+};
+
+/** Le moodboard affiche une entrée par place : un cadeau seul, ou un groupe au choix. */
+export type Entry = { key: string; options: Gift[]; title: string; room: string };
+export const ENTRIES: Entry[] = (() => {
+  const seen = new Set<string>();
+  const out: Entry[] = [];
+  for (const g of GIFTS) {
+    const key = storageId(g);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const options = g.group ? GIFTS.filter((o) => o.group === g.group) : [g];
+    const meta = g.group ? GROUPS[g.group] : undefined;
+    out.push({ key, options, title: meta?.title ?? g.name, room: meta?.room ?? g.room });
+  }
+  return out;
+})();
+
 /** Nombre de « places » à offrir : un groupe au choix compte pour une seule. */
 export const SLOT_IDS = [...new Set(GIFTS.map(storageId))];
 
