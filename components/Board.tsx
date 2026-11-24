@@ -506,6 +506,17 @@ function Sheet({
             {picked.name}
           </h2>
           <p className="sheet-details">{picked.details}</p>
+          {picked.link && (
+            <a className="shop-link" href={picked.link.url} target="_blank" rel="noopener noreferrer">
+              <span>
+                Voir chez {picked.link.shop}
+                {picked.link.price && <b> · {picked.link.price}</b>}
+              </span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 17L17 7M9 7h8v8" />
+              </svg>
+            </a>
+          )}
           {pair && !taken && (
             <p className="or-note">
               Elle n&apos;en veut qu&apos;une : touche celle que tu préfères, puis valide.

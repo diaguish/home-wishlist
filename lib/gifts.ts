@@ -14,6 +14,8 @@ export type Gift = {
   tilt: number;
   /** Cadeaux « au choix » : un seul du même groupe peut être offert. */
   group?: string;
+  /** Où le trouver (indicatif : chacun achète où il veut). */
+  link?: { url: string; shop: string; price?: string };
 };
 
 // L'ordre compose le moodboard : alterner grands / petits objets.
@@ -21,19 +23,20 @@ export const GIFTS: Gift[] = [
   { id: "fauteuil", name: "Fauteuil", details: "Fauteuil design vert olive, comme sur la photo", room: "Salon", image: "/items/fauteuil.webp", size: "l", tilt: -2 },
   { id: "fourth-wing", name: "Fourth Wing, tome 1", details: "Version française, édition collector", room: "Lecture", art: "book-fourthwing", size: "s", tilt: 6 },
   { id: "miroir", name: "Grand miroir", details: "Dimensions et style au choix", room: "Chambre", image: "/items/miroir.webp", size: "l", tilt: 0 },
-  { id: "projecteur", name: "Projecteur portable", details: "Niklok, le modèle de la photo", room: "Salon", art: "projector", size: "s", tilt: -5 },
+  { id: "projecteur", name: "Projecteur portable", details: "Niklok, le modèle de la photo", room: "Salon", art: "projector", size: "s", tilt: -5, link: { url: "https://www.tiktok.com/search?q=Niklok%20projecteur%20portable%20freestyle", shop: "TikTok Shop", price: "≈ 35 €" } },
   { id: "plaid", name: "Plaid", details: "Couleur et dimensions au choix", room: "Salon", image: "/items/plaid.webp", size: "m", tilt: 3 },
-  { id: "bols", name: "Set de bols de préparation", details: "12 pièces, inox", room: "Cuisine", image: "/items/bols.webp", size: "s", tilt: -3 },
-  { id: "raskog", name: "Desserte IKEA RÅSKOG", details: "Gris-vert, 3 niveaux", room: "Rangement", image: "/items/raskog.webp", size: "m", tilt: 2, group: "desserte" },
-  { id: "trolley-bambou", name: "Desserte en bambou", details: "3 plateaux et 1 étagère", room: "Cuisine", image: "/items/trolley.webp", size: "m", tilt: 1, group: "desserte" },
+  { id: "bols", name: "Set de bols de préparation", details: "12 pièces, inox", room: "Cuisine", image: "/items/bols.webp", size: "s", tilt: -3, link: { url: "https://www.action.com/fr-fr/search/?q=3215997", shop: "Action", price: "9,95 €" } },
+  { id: "raskog", name: "Desserte IKEA RÅSKOG", details: "Gris-vert, 3 niveaux, 28 × 38 × 61 cm", room: "Rangement", image: "/items/raskog.webp", size: "m", tilt: 2, group: "desserte", link: { url: "https://www.ikea.com/fr/fr/p/raskog-desserte-gris-vert-50591769/", shop: "IKEA", price: "24,99 €" } },
+  { id: "trolley-bambou", name: "Desserte en bambou", details: "3 plateaux et 1 étagère, 39,5 × 30 × 88 cm", room: "Cuisine", image: "/items/trolley.webp", size: "m", tilt: 1, group: "desserte", link: { url: "https://www.action.com/fr-fr/p/3208298/desserte-en-bambou/", shop: "Action" } },
   { id: "seasons", name: "Saga Seasons", details: "Morgane Moncomble, grand format (pas en poche)", room: "Lecture", art: "book-seasons", size: "s", tilt: -6 },
-  { id: "corbeille", name: "Corbeille à fruits", details: "2 niveaux", room: "Cuisine", image: "/items/corbeille.webp", size: "m", tilt: -2 },
+  { id: "corbeille", name: "Corbeille à fruits", details: "2 niveaux", room: "Cuisine", image: "/items/corbeille.webp", size: "m", tilt: -2, link: { url: "https://www.action.com/fr-fr/p/3220360/corbeille-a-fruits-a-2-niveaux/", shop: "Action", price: "5,95 €" } },
   { id: "carte-ikea", name: "Carte cadeau IKEA", details: "Montant libre", room: "Carte cadeau", art: "giftcard", size: "s", tilt: 7 },
   { id: "egouttoir", name: "Égouttoir à vaisselle", details: "2 niveaux, modèle noir de la photo", room: "Cuisine", image: "/items/egouttoir.webp", size: "m", tilt: -3 },
   { id: "shatter-me", name: "Saga Shatter Me", details: "Grand format, l'édition avec l'œil sur la couverture", room: "Lecture", art: "book-shatterme", size: "s", tilt: 4 },
   { id: "draps", name: "Draps", details: "Taille au choix : 80 × 200 cm ou 160 × 200 cm", room: "Chambre", image: "/items/draps.webp", size: "m", tilt: -2 },
-  { id: "variera", name: "Demi-étagère IKEA VARIERA", details: "Blanche, 32 × 28 × 16 cm", room: "Rangement", image: "/items/variera.webp", size: "s", tilt: 3 },
-  { id: "organiseur-bambou", name: "Organiseur en bambou", details: "Plateau de rangement, 6 pièces", room: "Rangement", image: "/items/couverts.webp", size: "s", tilt: -4 },
+  { id: "housse-couette", name: "Housse de couette", details: "240 × 220 cm, avec taies d'oreiller 65 × 65 cm. Couleur au choix", room: "Chambre", image: "/items/housse.webp", size: "m", tilt: 2, link: { url: "https://www.ikea.com/fr/fr/cat/housses-de-couette-et-taies-10680/f/housses-de-couette-et-taies-taille-240x220-f-typed-reference-measurement--240x220-bedlinen/", shop: "IKEA, modèles en 240 × 220" } },
+  { id: "variera", name: "Demi-étagère IKEA VARIERA", details: "Blanche, 32 × 28 × 16 cm", room: "Rangement", image: "/items/variera.webp", size: "s", tilt: 3, link: { url: "https://www.ikea.com/fr/fr/p/variera-demi-etagere-blanc-60136623/", shop: "IKEA", price: "4,99 €" } },
+  { id: "organiseur-bambou", name: "Organiseur en bambou", details: "Plateau de rangement, 6 pièces", room: "Rangement", image: "/items/couverts.webp", size: "s", tilt: -4, link: { url: "https://www.action.com/fr-fr/p/3220336/rangement-en-bambou-avec-tiroirs/", shop: "Action", price: "4,95 €" } },
   { id: "boite-tiroir", name: "Boîte de rangement pour tiroir", details: "Salle de bain, dimensions et compartiments au choix", room: "Rangement", image: "/items/boite.webp", size: "s", tilt: 2 },
 ];
 
