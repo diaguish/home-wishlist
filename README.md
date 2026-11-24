@@ -10,10 +10,10 @@ Liste de cadeaux de crémaillère façon moodboard : les invités choisissent un
 ## Mettre en ligne sur Vercel (5 minutes)
 
 1. Sur [vercel.com](https://vercel.com) : **Add New → Project**, importe ce dépôt GitHub, clique **Deploy**.
-2. Dans le projet Vercel : onglet **Storage → Create Database → Upstash (Redis)**, plan gratuit, puis **Connect** au projet.
-   Vercel ajoute tout seul les variables `KV_REST_API_URL` et `KV_REST_API_TOKEN`.
+2. Dans le projet Vercel : onglet **Storage → Create Database**, choisis **Upstash for Redis** ou **Redis** (plan gratuit), puis **Connect Project**.
+   Vercel ajoute tout seul les variables (`KV_REST_API_URL`/`KV_REST_API_TOKEN` pour Upstash, `REDIS_URL` pour Redis) : les deux fonctionnent.
 3. Onglet **Settings → Environment Variables** : ajoute `ADMIN_KEY` avec un mot de passe de ton choix.
-4. Onglet **Deployments** : **Redeploy** pour prendre en compte les variables.
+4. Onglet **Deployments** : **Redeploy** pour prendre en compte les variables (obligatoire, sinon le site reste en mode démo).
 
 Tant que Redis n'est pas branché, le site affiche « Mode démo » et les réservations ne sont pas sauvegardées.
 
