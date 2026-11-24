@@ -2,10 +2,12 @@
 
 import { AnimatePresence, motion, useDragControls, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EVENT, GIFTS, type Gift } from "@/lib/gifts";
+import { EVENT, GIFTS, SLOT_IDS, alternativesOf, storageId, type Gift } from "@/lib/gifts";
 import { Art } from "./Art";
 
 type Reservations = Record<string, { name: string }>;
+type Covered = Record<string, { by: string; takenId: string }>;
+const nameOf = (id: string) => GIFTS.find((g) => g.id === id)?.name ?? "l'autre option";
 
 const TOKENS_KEY = "wishlist:tokens";
 const NAME_KEY = "wishlist:prenom";
@@ -27,6 +29,7 @@ function write(k: string, v: string) {
 
 export default function Board() {
   const [res, setRes] = useState<Reservations>({});
+  const [covered, setCovered] = useState<Covered>({});
   const [loaded, setLoaded] = useState(false);
   const [storage, setStorage] = useState<string>("redis");
   const [tokens, setTokens] = useState<Record<string, string>>({});
@@ -42,6 +45,7 @@ export default function Board() {
       if (!r.ok) return;
       const data = await r.json();
       setRes(data.reservations ?? {});
+      setCovered(data.covered ?? {});
       setStorage(data.storage ?? "redis");
       setLoaded(true);
     } catch {}
@@ -78,8 +82,12 @@ export default function Board() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const taken = GIFTS.filter((g) => res[g.id]).length;
-  const list = useMemo(() => GIFTS.filter((g) => !(onlyFree && res[g.id])), [onlyFree, res]);
+  const filledSlots = new Set(GIFTS.filter((g) => res[g.id]).map(storageId));
+  const taken = filledSlots.size;
+  const list = useMemo(
+    () => GIFTS.filter((g) => !(onlyFree && (res[g.id] || covered[g.id]))),
+    [onlyFree, res, covered]
+  );
   const open = GIFTS.find((g) => g.id === openId) ?? null;
 
   const saveToken = (id: string, token: string | null) => {
@@ -107,15 +115,15 @@ export default function Board() {
           <span className="count" aria-live="polite">
             {loaded ? (
               <>
-                <b>{taken}</b> sur {GIFTS.length} déjà offerts
+                <b>{taken}</b> sur {SLOT_IDS.length} déjà offerts
               </>
             ) : (
               "Chargement de la liste…"
             )}
           </span>
           <span className="dots" aria-hidden="true">
-            {GIFTS.map((g) => (
-              <i key={g.id} className={res[g.id] ? "on" : ""} />
+            {SLOT_IDS.map((id) => (
+              <i key={id} className={filledSlots.has(id) ? "on" : ""} />
             ))}
           </span>
           <button className="switch" aria-pressed={onlyFree} onClick={() => setOnlyFree((v) => !v)}>
@@ -123,7 +131,7 @@ export default function Board() {
           </button>
         </div>
         {storage === "memory" && loaded && (
-          <p className="demo">Mode démo : branche Upstash Redis sur Vercel pour enregistrer les réservations.</p>
+          <p className="demo">Mode démo : connecte une base Redis sur Vercel pour enregistrer les réservations.</p>
         )}
       </header>
 
@@ -134,6 +142,7 @@ export default function Board() {
             gift={g}
             index={i}
             reservedBy={res[g.id]?.name}
+            coveredBy={covered[g.id]}
             mine={!!tokens[g.id]}
             hidden={openId === g.id}
             onOpen={() => setOpenId(g.id)}
@@ -151,22 +160,30 @@ export default function Board() {
             key={open.id}
             gift={open}
             reservedBy={res[open.id]?.name}
+            coveredBy={covered[open.id]}
             token={tokens[open.id]}
             admin={admin}
             onClose={() => setOpenId(null)}
             onReserved={(name, token) => {
               setRes((r) => ({ ...r, [open.id]: { name } }));
+              setCovered((c) => {
+                const n = { ...c };
+                for (const o of alternativesOf(open)) n[o.id] = { by: name, takenId: open.id };
+                return n;
+              });
               saveToken(open.id, token);
               setToast(`Merci ${name} ! « ${open.name} » est pour toi.`);
             }}
-            onConflict={(by) => {
-              if (by) setRes((r) => ({ ...r, [open.id]: { name: by } }));
-              refresh();
-            }}
+            onConflict={() => refresh()}
             onReleased={() => {
               setRes((r) => {
                 const n = { ...r };
                 delete n[open.id];
+                return n;
+              });
+              setCovered((c) => {
+                const n = { ...c };
+                for (const o of alternativesOf(open)) delete n[o.id];
                 return n;
               });
               saveToken(open.id, null);
@@ -203,6 +220,7 @@ function Item({
   gift,
   index,
   reservedBy,
+  coveredBy,
   mine,
   hidden,
   onOpen,
@@ -211,19 +229,22 @@ function Item({
   gift: Gift;
   index: number;
   reservedBy?: string;
+  coveredBy?: { by: string; takenId: string };
   mine: boolean;
   hidden: boolean;
   onOpen: () => void;
   reduce: boolean;
 }) {
   const taken = !!reservedBy;
-  const status = taken ? `Réservé par ${reservedBy}` : "Disponible";
+  const alt = alternativesOf(gift);
   return (
     <motion.button
-      className={`item size-${gift.size}${taken ? " taken" : ""}`}
+      className={`item size-${gift.size}${taken || coveredBy ? " taken" : ""}`}
       style={{ ["--tilt" as string]: `${gift.tilt}deg` }}
       onClick={onOpen}
-      aria-label={`${gift.name}, ${taken ? `réservé par ${reservedBy}` : "disponible"}`}
+      aria-label={`${gift.name}, ${
+        taken ? `réservé par ${reservedBy}` : coveredBy ? `plus besoin, ${coveredBy.by} offre ${nameOf(coveredBy.takenId)}` : "disponible"
+      }`}
       initial={reduce ? false : { opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: reduce ? 0 : 0.05 * index, type: "spring", stiffness: 260, damping: 24 }}
@@ -245,7 +266,12 @@ function Item({
       </span>
       <span className="item-label">
         <span className="item-name">{gift.name}</span>
-        <span className={`item-status${taken ? " is-taken" : ""}`}>{taken ? "Réservé" : "Disponible"}</span>
+        {alt.length > 0 && !taken && !coveredBy && (
+          <span className="item-or">ou {alt.map((o) => o.name).join(", ")}</span>
+        )}
+        <span className={`item-status${taken || coveredBy ? " is-taken" : ""}`}>
+          {taken ? "Réservé" : coveredBy ? "Plus besoin" : "Disponible"}
+        </span>
       </span>
     </motion.button>
   );
@@ -254,6 +280,7 @@ function Item({
 function Sheet({
   gift,
   reservedBy,
+  coveredBy,
   token,
   admin,
   onClose,
@@ -263,11 +290,12 @@ function Sheet({
 }: {
   gift: Gift;
   reservedBy?: string;
+  coveredBy?: { by: string; takenId: string };
   token?: string;
   admin: string | null;
   onClose: () => void;
   onReserved: (name: string, token: string) => void;
-  onConflict: (by: string | null) => void;
+  onConflict: () => void;
   onReleased: () => void;
 }) {
   const [name, setName] = useState("");
@@ -321,8 +349,13 @@ function Sheet({
         onReserved(data.name ?? clean, data.token);
         setTimeout(() => onCloseRef.current(), 1700);
       } else if (r.status === 409) {
-        setError(data.by ? `Trop tard, ${data.by} vient de le réserver.` : "Quelqu'un vient de le réserver.");
-        onConflict(data.by ?? null);
+        const who = data.by ?? "Quelqu'un";
+        setError(
+          data.takenId && data.takenId !== gift.id
+            ? `Trop tard, ${who} vient de prendre « ${nameOf(data.takenId)} ». Une seule des deux suffit.`
+            : `Trop tard, ${who} vient de le réserver.`
+        );
+        onConflict();
       } else {
         setError(data.error ?? "La réservation n'est pas passée. Réessaie.");
       }
@@ -382,7 +415,7 @@ function Sheet({
           </svg>
         </button>
 
-        <div className={`sheet-stage${taken ? " taken" : ""}`} onPointerDown={(e) => drag.start(e)}>
+        <div className={`sheet-stage${taken || coveredBy ? " taken" : ""}`} onPointerDown={(e) => drag.start(e)}>
           <motion.div className="sheet-visual" layoutId={`v-${gift.id}`}>
             <Visual gift={gift} />
           </motion.div>
@@ -407,9 +440,22 @@ function Sheet({
             {gift.name}
           </h2>
           <p className="sheet-details">{gift.details}</p>
+          {alternativesOf(gift).length > 0 && !taken && !coveredBy && (
+            <p className="or-note">
+              Au choix avec « {alternativesOf(gift).map((o) => o.name).join(" », « ")} » : une seule des deux suffit,
+              prends celle que tu préfères.
+            </p>
+          )}
 
           {justReserved ? (
             <p className="thanks">Merci {reservedBy} ! C&apos;est noté, il est pour toi.</p>
+          ) : coveredBy ? (
+            <div className="taken-box">
+              <p>
+                Une seule des deux suffit, et {coveredBy.by} offre déjà « {nameOf(coveredBy.takenId)} ». Choisis un autre
+                objet !
+              </p>
+            </div>
           ) : taken ? (
             <div className="taken-box">
               <p>

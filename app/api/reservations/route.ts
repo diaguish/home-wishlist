@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { GIFTS, GIFT_IDS } from "@/lib/gifts";
+import { GIFTS, SLOT_IDS, storageId } from "@/lib/gifts";
 import { getAll, get, reserve, release, hashToken, storageMode } from "@/lib/store";
 import { timingSafeEqual } from "crypto";
 
 export const dynamic = "force-dynamic";
 
 const noStore = { "Cache-Control": "no-store" };
+const byId = new Map(GIFTS.map((g) => [g.id, g]));
 
 function cleanName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -22,29 +23,38 @@ function isAdmin(req: Request): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Liste publique : qui a réservé quoi (jamais les jetons). */
+/**
+ * Liste publique (jamais les jetons) :
+ * - reservations : cadeau réservé → prénom
+ * - covered : cadeau « au choix » dont l'autre option a été prise → { by, giftId de l'option prise }
+ */
 export async function GET() {
-  const all = await getAll(GIFTS.map((g) => g.id));
+  const slots = await getAll(SLOT_IDS);
   const reservations: Record<string, { name: string }> = {};
-  for (const [id, r] of Object.entries(all)) if (r) reservations[id] = { name: r.name };
-  return NextResponse.json({ reservations, storage: storageMode }, { headers: noStore });
+  const covered: Record<string, { by: string; takenId: string }> = {};
+  for (const g of GIFTS) {
+    const r = slots[storageId(g)];
+    if (!r) continue;
+    const takenId = r.giftId ?? g.id;
+    if (takenId === g.id) reservations[g.id] = { name: r.name };
+    else covered[g.id] = { by: r.name, takenId };
+  }
+  return NextResponse.json({ reservations, covered, storage: storageMode }, { headers: noStore });
 }
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
-  const giftId = body?.giftId;
+  const gift = typeof body?.giftId === "string" ? byId.get(body.giftId) : undefined;
   const name = cleanName(body?.name);
-  if (typeof giftId !== "string" || !GIFT_IDS.has(giftId)) {
-    return NextResponse.json({ error: "Ce cadeau n'existe pas." }, { status: 400, headers: noStore });
-  }
-  if (!name) {
-    return NextResponse.json({ error: "Écris ton prénom." }, { status: 400, headers: noStore });
-  }
-  const result = await reserve(giftId, name);
+  if (!gift) return NextResponse.json({ error: "Ce cadeau n'existe pas." }, { status: 400, headers: noStore });
+  if (!name) return NextResponse.json({ error: "Écris ton prénom." }, { status: 400, headers: noStore });
+
+  const result = await reserve(storageId(gift), gift.id, name);
   if (!result.ok) {
-    const current = await get(giftId);
+    const current = await get(storageId(gift));
+    const takenId = current?.giftId ?? gift.id;
     return NextResponse.json(
-      { error: "Déjà réservé.", by: current?.name ?? null },
+      { error: "Déjà réservé.", by: current?.name ?? null, takenId },
       { status: 409, headers: noStore }
     );
   }
@@ -53,19 +63,17 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   const body = await req.json().catch(() => null);
-  const giftId = body?.giftId;
-  if (typeof giftId !== "string" || !GIFT_IDS.has(giftId)) {
-    return NextResponse.json({ error: "Ce cadeau n'existe pas." }, { status: 400, headers: noStore });
-  }
-  const current = await get(giftId);
-  if (!current) return NextResponse.json({ ok: true }, { headers: noStore });
+  const gift = typeof body?.giftId === "string" ? byId.get(body.giftId) : undefined;
+  if (!gift) return NextResponse.json({ error: "Ce cadeau n'existe pas." }, { status: 400, headers: noStore });
+
+  const current = await get(storageId(gift));
+  // Rien à annuler, ou c'est l'autre option du groupe qui est réservée.
+  if (!current || (current.giftId ?? gift.id) !== gift.id) return NextResponse.json({ ok: true }, { headers: noStore });
+
   const token = typeof body?.token === "string" ? body.token : "";
   if (!isAdmin(req) && (!token || hashToken(token) !== current.tokenHash)) {
-    return NextResponse.json(
-      { error: "Seule la personne qui a réservé peut annuler." },
-      { status: 403, headers: noStore }
-    );
+    return NextResponse.json({ error: "Seule la personne qui a réservé peut annuler." }, { status: 403, headers: noStore });
   }
-  await release(giftId);
+  await release(storageId(gift));
   return NextResponse.json({ ok: true }, { headers: noStore });
 }

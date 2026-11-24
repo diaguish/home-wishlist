@@ -2,7 +2,7 @@ import { Redis } from "@upstash/redis";
 import { createClient } from "redis";
 import { createHash, randomBytes } from "crypto";
 
-export type Reservation = { name: string; tokenHash: string; at: string };
+export type Reservation = { name: string; tokenHash: string; at: string; giftId?: string };
 
 /**
  * Trois modes, choisis selon les variables que Vercel a ajoutées :
@@ -76,10 +76,10 @@ export async function getAll(ids: string[]): Promise<Record<string, Reservation 
 }
 
 /** Réservation atomique : seule la première personne gagne. */
-export async function reserve(giftId: string, name: string): Promise<{ ok: true; token: string } | { ok: false }> {
+export async function reserve(slotId: string, giftId: string, name: string): Promise<{ ok: true; token: string } | { ok: false }> {
   const tok = randomBytes(18).toString("base64url");
-  const value: Reservation = { name, tokenHash: hashToken(tok), at: new Date().toISOString() };
-  return (await setNx(key(giftId), JSON.stringify(value))) ? { ok: true, token: tok } : { ok: false };
+  const value: Reservation = { name, giftId, tokenHash: hashToken(tok), at: new Date().toISOString() };
+  return (await setNx(key(slotId), JSON.stringify(value))) ? { ok: true, token: tok } : { ok: false };
 }
 
 export async function get(giftId: string): Promise<Reservation | null> {
